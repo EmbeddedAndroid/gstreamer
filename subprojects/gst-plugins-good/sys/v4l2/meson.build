@@ -7,6 +7,7 @@ v4l2_sources = [
   'gstv4l2deviceprovider.c',
   'gstv4l2object.c',
   'gstv4l2bufferpool.c',
+  'gstv4l2dmaheappool.c',
   'gstv4l2sink.c',
   'gstv4l2src.c',
   'gstv4l2radio.c',
@@ -54,6 +55,7 @@ v4l2_headers = [
   'gstv4l2h263enc.h',
   'gstv4l2deviceprovider.h',
   'gstv4l2bufferpool.h',
+  'gstv4l2dmaheappool.h',
   'gstv4l2tuner.h',
   'gstv4l2elements.h',
   'gstv4l2radio.h',
@@ -99,6 +101,7 @@ cdata.set('GST_V4L2_ENABLE_PROBE', get_option('v4l2-probe'))
 if have_v4l2
   message('building v4l2 plugin')
   cdata.set('HAVE_GST_V4L2', true)
+  cdata.set('HAVE_LINUX_DMA_HEAP_H', cc.has_header('linux/dma-heap.h'))
   gudev_dep = dependency('gudev-1.0', version : '>=147', required : get_option('v4l2-gudev'), allow_fallback: true)
   cdata.set('HAVE_GUDEV', gudev_dep.found())
 

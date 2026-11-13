@@ -202,6 +202,7 @@ struct _GstV4l2Object {
   gchar *channel;
   gulong frequency;
   GstStructure *extra_controls;
+  gchar *dma_heap;
   gboolean keep_aspect;
   GValue *par;
 
@@ -252,6 +253,7 @@ GType gst_v4l2_object_get_type (void);
     PROP_IO_MODE,             \
     PROP_OUTPUT_IO_MODE,      \
     PROP_CAPTURE_IO_MODE,     \
+    PROP_CAPTURE_DMA_HEAP,    \
     PROP_EXTRA_CONTROLS,      \
     PROP_PIXEL_ASPECT_RATIO,  \
     PROP_FORCE_ASPECT_RATIO

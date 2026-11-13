@@ -37,6 +37,7 @@
 #include "ext/videodev2.h"
 #include "ext/drm_fourcc.h"
 #include "gstv4l2object.h"
+#include "gstv4l2dmaheappool.h"
 #include "gstv4l2tuner.h"
 #include "gstv4l2colorbalance.h"
 
@@ -543,6 +544,26 @@ gst_v4l2_object_install_m2m_properties_helper (GObjectClass * gobject_class)
           GST_TYPE_V4L2_IO_MODE, DEFAULT_PROP_IO_MODE,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
+  /**
+   * GstV4l2VideoDec:capture-dma-heap:
+   *
+   * Allocate the capture buffers from this Linux DMA heap and import them,
+   * instead of importing from a downstream pool: a heap name under
+   * /dev/dma_heap (such as "system" or "protected,secure-video") or an
+   * absolute path. Needs capture-io-mode=dmabuf-import, which it selects
+   * when the mode is auto. The element never maps these buffers, so heaps
+   * whose memory the CPU cannot access, such as the TEE protected heaps,
+   * can be used for secure decoding.
+   *
+   * Since: 1.30
+   */
+  g_object_class_install_property (gobject_class, PROP_CAPTURE_DMA_HEAP,
+      g_param_spec_string ("capture-dma-heap", "Capture DMA heap",
+          "Allocate capture buffers from this DMA heap (name under "
+          "/dev/dma_heap or a path)", NULL,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
+
   g_object_class_install_property (gobject_class, PROP_EXTRA_CONTROLS,
       g_param_spec_boxed ("extra-controls", "Extra Controls",
           "Extra v4l2 controls (CIDs) for the device",
@@ -676,6 +697,7 @@ gst_v4l2_object_destroy (GstV4l2Object * v4l2object)
   g_free (v4l2object->videodev);
   g_free (v4l2object->par);
   g_free (v4l2object->channel);
+  g_free (v4l2object->dma_heap);
 
   gst_poll_free (v4l2object->poll);
 
@@ -794,6 +816,11 @@ gst_v4l2_object_set_property_helper (GstV4l2Object * v4l2object,
       g_return_val_if_fail (V4L2_TYPE_IS_OUTPUT (v4l2object->type), FALSE);
       v4l2object->req_mode = g_value_get_enum (value);
       break;
+    case PROP_CAPTURE_DMA_HEAP:
+      g_return_val_if_fail (!V4L2_TYPE_IS_OUTPUT (v4l2object->type), FALSE);
+      g_free (v4l2object->dma_heap);
+      v4l2object->dma_heap = g_value_dup_string (value);
+      break;
     case PROP_EXTRA_CONTROLS:{
       const GstStructure *s = gst_value_get_structure (value);
 
@@ -910,6 +937,10 @@ gst_v4l2_object_get_property_helper (GstV4l2Object * v4l2object,
     case PROP_OUTPUT_IO_MODE:
       g_return_val_if_fail (V4L2_TYPE_IS_OUTPUT (v4l2object->type), FALSE);
       g_value_set_enum (value, v4l2object->req_mode);
+      break;
+    case PROP_CAPTURE_DMA_HEAP:
+      g_return_val_if_fail (!V4L2_TYPE_IS_OUTPUT (v4l2object->type), FALSE);
+      g_value_set_string (value, v4l2object->dma_heap);
       break;
     case PROP_EXTRA_CONTROLS:
       gst_value_set_structure (value, v4l2object->extra_controls);
@@ -3482,6 +3513,13 @@ gst_v4l2_object_setup_pool (GstV4l2Object * v4l2object, GstCaps * caps)
       v4l2object->req_mode == GST_V4L2_IO_DMABUF)
     goto method_not_supported;
 
+  if (v4l2object->dma_heap) {
+    if (v4l2object->req_mode == GST_V4L2_IO_AUTO)
+      mode = GST_V4L2_IO_DMABUF_IMPORT;
+    else if (mode != GST_V4L2_IO_DMABUF_IMPORT)
+      goto dma_heap_needs_import;
+  }
+
   /* if still no transport selected, error out */
   if (mode == GST_V4L2_IO_AUTO)
     goto no_supported_capture_method;
@@ -3531,6 +3569,12 @@ no_supported_capture_method:
     GST_ELEMENT_ERROR (v4l2object->element, RESOURCE, READ,
         (_("The driver of device '%s' does not support any known IO "
                 "method."), v4l2object->videodev), (NULL));
+    return FALSE;
+  }
+dma_heap_needs_import:
+  {
+    GST_ELEMENT_ERROR (v4l2object->element, RESOURCE, SETTINGS,
+        (NULL), ("capture-dma-heap needs capture-io-mode=dmabuf-import"));
     return FALSE;
   }
 }
@@ -5901,6 +5945,14 @@ gst_v4l2_object_decide_allocation (GstV4l2Object * obj, GstQuery * query)
     case GST_V4L2_IO_DMABUF_IMPORT:
       /* in importing mode, prefer our own pool, and pass the other pool to
        * our own, so it can serve itself */
+      if (obj->dma_heap) {
+        if (obj->n_v4l2_planes != 1)
+          goto dma_heap_multi_planar;
+        gst_clear_object (&pool);
+        pool = gst_v4l2_dma_heap_pool_new (obj->dma_heap, &obj->info.vinfo);
+        if (pool == NULL)
+          goto dma_heap_failed;
+      }
       if (pool == NULL)
         goto no_downstream_pool;
       gst_v4l2_buffer_pool_set_other_pool (GST_V4L2_BUFFER_POOL (obj_pool),
@@ -6090,6 +6142,19 @@ no_downstream_pool:
     GST_ELEMENT_ERROR (obj->element, RESOURCE, SETTINGS,
         (_("No downstream pool to import from.")),
         ("When importing DMABUF or USERPTR, we need a pool to import from"));
+    goto cleanup;
+  }
+dma_heap_multi_planar:
+  {
+    GST_ELEMENT_ERROR (obj->element, RESOURCE, SETTINGS, (NULL),
+        ("capture-dma-heap supports single-plane V4L2 formats only, not %d "
+            "planes", obj->n_v4l2_planes));
+    goto cleanup;
+  }
+dma_heap_failed:
+  {
+    GST_ELEMENT_ERROR (obj->element, RESOURCE, OPEN_READ_WRITE, (NULL),
+        ("cannot open DMA heap %s: %s", obj->dma_heap, g_strerror (errno)));
     goto cleanup;
   }
 cleanup:

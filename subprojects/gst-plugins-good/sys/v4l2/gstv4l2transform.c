@@ -72,6 +72,7 @@ gst_v4l2_transform_set_property (GObject * object,
 
   switch (prop_id) {
     case PROP_CAPTURE_IO_MODE:
+    case PROP_CAPTURE_DMA_HEAP:
       gst_v4l2_object_set_property_helper (self->v4l2capture, prop_id, value,
           pspec);
       break;
@@ -97,6 +98,7 @@ gst_v4l2_transform_get_property (GObject * object,
 
   switch (prop_id) {
     case PROP_CAPTURE_IO_MODE:
+    case PROP_CAPTURE_DMA_HEAP:
       gst_v4l2_object_get_property_helper (self->v4l2capture, prop_id, value,
           pspec);
       break;

@@ -84,6 +84,7 @@ gst_v4l2_video_enc_set_property (GObject * object,
       }
       break;
     case PROP_CAPTURE_IO_MODE:
+    case PROP_CAPTURE_DMA_HEAP:
       if (!gst_v4l2_object_set_property_helper (self->v4l2capture,
               prop_id, value, pspec)) {
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -132,6 +133,7 @@ gst_v4l2_video_enc_get_property (GObject * object,
       g_value_set_int (value, self->gop_size);
       break;
     case PROP_CAPTURE_IO_MODE:
+    case PROP_CAPTURE_DMA_HEAP:
       if (!gst_v4l2_object_get_property_helper (self->v4l2capture,
               prop_id, value, pspec)) {
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
