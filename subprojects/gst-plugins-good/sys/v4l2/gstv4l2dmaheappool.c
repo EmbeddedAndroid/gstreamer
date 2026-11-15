@@ -82,7 +82,8 @@ gst_v4l2_dma_heap_pool_set_config (GstBufferPool * bpool,
   self->size = size;
   self->add_video_meta = gst_buffer_pool_config_has_option (config,
       GST_BUFFER_POOL_OPTION_VIDEO_META) &&
-      GST_VIDEO_INFO_FORMAT (&self->info) != GST_VIDEO_FORMAT_UNKNOWN;
+      GST_VIDEO_INFO_FORMAT (&self->info) != GST_VIDEO_FORMAT_UNKNOWN &&
+      GST_VIDEO_INFO_FORMAT (&self->info) != GST_VIDEO_FORMAT_ENCODED;
 
   return GST_BUFFER_POOL_CLASS (gst_v4l2_dma_heap_pool_parent_class)->set_config
       (bpool, config);

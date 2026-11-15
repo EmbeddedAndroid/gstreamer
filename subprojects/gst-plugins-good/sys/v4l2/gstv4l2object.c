@@ -6080,6 +6080,13 @@ gst_v4l2_object_decide_allocation (GstV4l2Object * obj, GstQuery * query)
       GST_DEBUG_OBJECT (obj->dbg_obj, "activate Video Meta");
       gst_buffer_pool_config_add_option (config,
           GST_BUFFER_POOL_OPTION_VIDEO_META);
+    } else if (obj->dma_heap && obj->need_video_meta) {
+      /* the heap pool cannot copy into a standard layout: the frames keep
+       * the driver's, which only the video meta describes */
+      GST_WARNING_OBJECT (obj->dbg_obj, "downstream does not take the video "
+          "meta, it gets frames in the driver's padded layout");
+      gst_buffer_pool_config_add_option (config,
+          GST_BUFFER_POOL_OPTION_VIDEO_META);
     }
 
     if (!gst_buffer_pool_set_config (other_pool, config)) {
